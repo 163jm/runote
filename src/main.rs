@@ -543,10 +543,27 @@ impl NoteApp {
             // 所以不能依赖 TextEdit 自身状态在右键那一帧的值，而是用这份独立记录的、
             // 点击发生前最后一次真实存在的选区来判断。
             let last_sel_key = egui::Id::new(("note_content_last_selection", id));
-            if let Some(state) = egui::widgets::text_edit::TextEditState::load(ui.ctx(), content_id) {
-                if let Some(range) = state.cursor.char_range() {
-                    if range.primary.index != range.secondary.index {
-                        ui.ctx().data_mut(|d| d.insert_temp(last_sel_key, range));
+            let current_range =
+                egui::widgets::text_edit::TextEditState::load(ui.ctx(), content_id).and_then(|s| s.cursor.char_range());
+            if let Some(range) = current_range {
+                if range.primary.index != range.secondary.index {
+                    ui.ctx().data_mut(|d| d.insert_temp(last_sel_key, range));
+                }
+            }
+
+            // 右键点击会让 TextEdit 把选区清空，导致蓝色高亮消失。
+            // 如果检测到这一帧右键点击导致选区被清空了，就用刚才记录的快照把
+            // TextEdit 自身的选区状态也恢复回去，这样界面上会重新显示选中高亮。
+            if c_resp.secondary_clicked() {
+                let now_empty = current_range.map_or(true, |r| r.primary.index == r.secondary.index);
+                if now_empty {
+                    let saved: Option<egui::text::CCursorRange> = ui.ctx().data(|d| d.get_temp(last_sel_key));
+                    if let Some(saved_range) = saved {
+                        if let Some(mut state) = egui::widgets::text_edit::TextEditState::load(ui.ctx(), content_id) {
+                            state.cursor.set_char_range(Some(saved_range));
+                            state.store(ui.ctx(), content_id);
+                            ui.ctx().request_repaint();
+                        }
                     }
                 }
             }
