@@ -6,11 +6,6 @@ name: Build RuNote
 # 3. push 一个 v 开头的 tag（例如 v1.0.0）时，会自动创建 GitHub Release 并附带产物
 # 4. 也支持在 Actions 页面手动触发
 on:
-  push:
-    branches: [ "main" ]
-    tags: [ "v*" ]
-  pull_request:
-    branches: [ "main" ]
   workflow_dispatch:
 
 env:
@@ -63,30 +58,10 @@ jobs:
           name: RuNote-Setup
           path: RuNote-Setup.exe
 
-  release:
-    name: 发布 Release
-    needs: build
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
-    permissions:
-      contents: write
-    steps:
-      - name: 下载 exe 产物
-        uses: actions/download-artifact@v4
-        with:
-          name: RuNote-exe
-          path: dist
-
-      - name: 下载安装程序产物
-        uses: actions/download-artifact@v4
-        with:
-          name: RuNote-Setup
-          path: dist
 
       - name: 创建 GitHub Release 并上传文件
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            dist/RuNote.exe
-            dist/RuNote-Setup.exe
-          generate_release_notes: true
+          tag_name: test
+          name: test
+          files: RuNote-Setup.exe
