@@ -1,8 +1,8 @@
 [package]
-name = "runote"
+name = "Memo"
 version = "0.1.0"
 edition = "2021"
-description = "RuNote - 现代、简单、轻量的 Windows 便签，自动保存"
+description = "Memo - 现代、简单、轻量的 Windows 便签，自动保存"
 
 [dependencies]
 eframe = { version = "0.29", features = ["persistence"] }
