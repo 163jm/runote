@@ -197,7 +197,7 @@ fn setup_visuals(ctx: &egui::Context) {
     v.widgets.inactive.fg_stroke = Stroke::new(1.0_f32, Color32::from_rgb(72, 78, 94));
     // 编辑区文字统一用深色，确保白底上清晰可读
     v.override_text_color = Some(TEXT_DARK);
-    v.text_cursor = Stroke::new(2.0_f32, ACCENT);
+    v.text_cursor.stroke = Stroke::new(2.0_f32, ACCENT);
     v.window_rounding = egui::Rounding::same(10.0);
     ctx.set_visuals(v);
 }
@@ -711,6 +711,6 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "RuNote",
         options,
-        Box::new(|cc| Box::new(NoteApp::new(cc))),
+        Box::new(|cc| Ok(Box::new(NoteApp::new(cc)))),
     )
 }
