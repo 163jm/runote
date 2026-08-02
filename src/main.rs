@@ -229,6 +229,9 @@ struct NoteApp {
     confirm_delete: bool,
     status: String,
     status_ok: bool,
+    logo_texture: Option<egui::TextureHandle>,
+    /// 右键菜单目标便签 id（在便签列表卡片上右键弹出删除菜单）
+    context_menu_note: Option<u64>,
 }
 
 impl NoteApp {
@@ -238,6 +241,15 @@ impl NoteApp {
         setup_visuals(&cc.egui_ctx);
         let save_path = data_path();
         let notes = load_notes(&save_path);
+
+        // 侧栏 Logo 图标：直接用应用图标（与任务栏图标保持一致）
+        let logo_texture = image::load_from_memory(APP_ICON).ok().map(|img| {
+            let img = img.into_rgba8();
+            let (w, h) = img.dimensions();
+            let color_image = egui::ColorImage::from_rgba_unmultiplied([w as usize, h as usize], img.as_raw());
+            cc.egui_ctx.load_texture("app_logo", color_image, egui::TextureOptions::LINEAR)
+        });
+
         Self {
             notes,
             current: None,
@@ -249,6 +261,8 @@ impl NoteApp {
             confirm_delete: false,
             status: "就绪，自动保存已开启".to_owned(),
             status_ok: true,
+            logo_texture,
+            context_menu_note: None,
         }
     }
 
@@ -299,9 +313,12 @@ impl NoteApp {
     }
 
     fn delete_current(&mut self) {
-        if let Some(id) = self.current {
+        if let Some(id) = self.context_menu_note.or(self.current) {
             self.notes.notes.retain(|n| n.id != id);
-            self.current = None;
+            if self.current == Some(id) {
+                self.current = None;
+            }
+            self.context_menu_note = None;
             self.confirm_delete = false;
             self.mark_dirty();
             self.save();
@@ -313,11 +330,15 @@ impl NoteApp {
     fn sidebar(&mut self, ui: &mut egui::Ui) {
         ui.add_space(12.0);
 
-        // Logo 行
+        // Logo 行（与任务栏图标保持一致）
         ui.horizontal(|ui| {
-            let (r, _) = ui.allocate_exact_size(Vec2::new(16.0, 16.0), egui::Sense::hover());
-            ui.painter().circle_filled(r.center(), 8.0, ACCENT);
-            ui.painter().circle_filled(r.center() - Vec2::new(1.5, 1.5), 4.5, Color32::WHITE);
+            if let Some(tex) = &self.logo_texture {
+                ui.add(egui::Image::new(tex).fit_to_exact_size(Vec2::new(18.0, 18.0)));
+            } else {
+                let (r, _) = ui.allocate_exact_size(Vec2::new(16.0, 16.0), egui::Sense::hover());
+                ui.painter().circle_filled(r.center(), 8.0, ACCENT);
+                ui.painter().circle_filled(r.center() - Vec2::new(1.5, 1.5), 4.5, Color32::WHITE);
+            }
             ui.add_space(3.0);
             ui.label(RichText::new("RuNote").size(20.5).strong().color(TEXT_DARK));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -465,6 +486,22 @@ impl NoteApp {
                 if resp.clicked() {
                     clicked = Some(id);
                 }
+
+                // 右键弹出删除菜单
+                let mut delete_requested = false;
+                resp.context_menu(|ui| {
+                    ui.set_min_width(96.0);
+                    let del_btn = egui::Button::new(RichText::new("删除").color(ERROR_RED));
+                    if ui.add(del_btn).clicked() {
+                        delete_requested = true;
+                        ui.close_menu();
+                    }
+                });
+                if delete_requested {
+                    self.context_menu_note = Some(id);
+                    self.confirm_delete = true;
+                }
+
                 ui.add_space(6.0);
             }
             if let Some(id) = clicked {
@@ -486,8 +523,7 @@ impl NoteApp {
             return;
         };
 
-        let (title_changed, content_changed, delete_clicked, _created, updated, chars) = {
-            let mut del_clicked = false;
+        let (title_changed, content_changed, _created, updated, chars) = {
             let note = &mut self.notes.notes[idx];
 
             ui.add_space(10.0);
@@ -503,20 +539,11 @@ impl NoteApp {
             let title_changed = t_resp.changed();
             ui.add_space(2.0);
 
-            // 时间行 + 删除
+            // 时间行（删除按钮已移至左侧便签列表：右键点击便签弹出）
             ui.horizontal(|ui| {
                 ui.label(RichText::new(format!("创建于 {}", fmt_time(note.created))).size(12.0).color(TEXT_FAINT));
                 ui.label(RichText::new("·").size(12.0).color(TEXT_FAINT));
                 ui.label(RichText::new(fmt_ago(note.updated)).size(12.0).color(TEXT_FAINT));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let del_btn = egui::Button::new(RichText::new("删除").size(12.5).color(ERROR_RED))
-                        .fill(Color32::from_rgb(255, 240, 240))
-                        .stroke(Stroke::NONE)
-                        .rounding(6.0);
-                    if ui.add(del_btn).clicked() {
-                        del_clicked = true;
-                    }
-                });
             });
             ui.add_space(8.0);
             ui.separator();
@@ -570,12 +597,9 @@ impl NoteApp {
 
             let content_changed = editor_context_menu(ui, &c_resp, content_id, last_sel_key, &mut note.content) || c_resp.changed();
             let chars = note.content.chars().count();
-            (title_changed, content_changed, del_clicked, note.created, note.updated, chars)
+            (title_changed, content_changed, note.created, note.updated, chars)
         };
 
-        if delete_clicked {
-            self.confirm_delete = true;
-        }
         if title_changed || content_changed {
             self.mark_dirty();
         }
@@ -768,27 +792,10 @@ impl eframe::App for NoteApp {
         }
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             self.confirm_delete = false;
+            self.context_menu_note = None;
         }
 
-        // ---- 底部状态栏 ----
-        egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
-            ui.add_space(3.0);
-            ui.horizontal(|ui| {
-                let (dot, txt) = if self.dirty {
-                    (Color32::from_rgb(255, 172, 64), self.status.clone())
-                } else if self.status_ok {
-                    (Color32::from_rgb(74, 194, 130), self.status.clone())
-                } else {
-                    (ERROR_RED, self.status.clone())
-                };
-                ui.label(RichText::new("●").size(12.0).color(dot));
-                ui.label(RichText::new(txt).size(12.0).color(TEXT_SOFT));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(RichText::new("RuNote v0.2 · 数据在 %APPDATA%\\RuNote").size(11.0).color(TEXT_FAINT));
-                });
-            });
-            ui.add_space(3.0);
-        });
+        // 底部状态栏已按需求隐藏（保存状态仍在内部记录，仅不再显示）
 
         // ---- 左侧列表（固定宽度，不可拖动） ----
         egui::SidePanel::left("sidebar")
@@ -835,10 +842,14 @@ impl eframe::App for NoteApp {
                 });
             match decision {
                 Some(true) => self.delete_current(),
-                Some(false) => self.confirm_delete = false,
+                Some(false) => {
+                    self.confirm_delete = false;
+                    self.context_menu_note = None;
+                }
                 None => {
                     if !open {
                         self.confirm_delete = false;
+                        self.context_menu_note = None;
                     }
                 }
             }
@@ -855,12 +866,27 @@ impl eframe::App for NoteApp {
 
 // ---------------- 入口 ----------------
 
+/// 应用图标（内嵌，用于标题栏/任务栏，与 assets/app.ico 保持一致）
+const APP_ICON: &[u8] = include_bytes!("../assets/app.ico");
+
+fn load_app_icon() -> Option<egui::IconData> {
+    let image = image::load_from_memory(APP_ICON).ok()?.into_rgba8();
+    let (width, height) = image.dimensions();
+    Some(egui::IconData { rgba: image.into_raw(), width, height })
+}
+
 fn main() -> eframe::Result<()> {
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_title("RuNote 便签")
+        .with_inner_size([1180.0, 660.0])
+        .with_min_inner_size([560.0, 400.0]);
+    if let Some(icon) = load_app_icon() {
+        viewport = viewport.with_icon(icon);
+    }
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_title("RuNote 便签")
-            .with_inner_size([1180.0, 660.0])
-            .with_min_inner_size([560.0, 400.0]),
+        viewport,
+        // 记住窗口位置/大小，下次启动恢复到上一次关闭时的状态
+        persist_window: true,
         ..Default::default()
     };
     eframe::run_native(
