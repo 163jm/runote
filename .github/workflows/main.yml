@@ -1,10 +1,5 @@
 name: Build RuNote
 
-# 触发条件：
-# 1. push 到 main 分支
-# 2. 提交 Pull Request 到 main 分支
-# 3. push 一个 v 开头的 tag（例如 v1.0.0）时，会自动创建 GitHub Release 并附带产物
-# 4. 也支持在 Actions 页面手动触发
 on:
   workflow_dispatch:
 
@@ -37,12 +32,6 @@ jobs:
           mkdir -p dist
           cp target/x86_64-pc-windows-msvc/release/RuNote.exe dist/RuNote.exe
 
-      - name: 上传 exe 构建产物
-        uses: actions/upload-artifact@v4
-        with:
-          name: RuNote-exe
-          path: dist/RuNote.exe
-
       - name: 安装 NSIS
         run: choco install nsis -y
 
@@ -51,12 +40,6 @@ jobs:
         run: |
           copy dist\RuNote.exe RuNote.exe
           "C:\Program Files (x86)\NSIS\makensis.exe" install.nsi
-
-      - name: 上传安装程序构建产物
-        uses: actions/upload-artifact@v4
-        with:
-          name: RuNote-Setup
-          path: RuNote-Setup.exe
 
 
       - name: 创建 GitHub Release 并上传文件
