@@ -1,5 +1,5 @@
 [package]
-name = "Memo"
+name = "memo"
 version = "0.1.0"
 edition = "2021"
 description = "Memo - 现代、简单、轻量的 Windows 便签，自动保存"
