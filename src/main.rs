@@ -177,10 +177,14 @@ fn setup_fonts(ctx: &egui::Context) {
 }
 
 fn setup_visuals(ctx: &egui::Context) {
+    // 强制浅色主题，不跟随操作系统的深色/浅色模式设置，
+    // 避免在系统开启深色模式时被自动切回黑色背景。
+    ctx.set_theme(egui::Theme::Light);
+
     let mut v = egui::Visuals::light();
     v.panel_fill = BG_PANEL;
     v.window_fill = Color32::from_rgb(255, 255, 255);
-    v.extreme_bg_color = Color32::from_rgb(241, 243, 248);
+    v.extreme_bg_color = Color32::from_rgb(255, 255, 255);
     v.faint_bg_color = Color32::from_rgb(244, 245, 249);
     v.selection.bg_fill = ACCENT;
     v.selection.stroke = Stroke::new(1.0_f32, ACCENT);
@@ -191,6 +195,8 @@ fn setup_visuals(ctx: &egui::Context) {
     v.widgets.active.bg_fill = ACCENT;
     v.widgets.active.rounding = egui::Rounding::same(8.0);
     v.widgets.inactive.fg_stroke = Stroke::new(1.0_f32, Color32::from_rgb(72, 78, 94));
+    // 编辑区文字统一用深色，确保白底上清晰可读
+    v.override_text_color = Some(TEXT_DARK);
     v.text_cursor = Stroke::new(2.0_f32, ACCENT);
     v.window_rounding = egui::Rounding::same(10.0);
     ctx.set_visuals(v);
@@ -474,6 +480,7 @@ impl NoteApp {
             let t_resp = ui.add(
                 egui::TextEdit::singleline(&mut note.title)
                     .font(egui::TextStyle::Heading)
+                    .text_color(TEXT_DARK)
                     .hint_text("无标题")
                     .desired_width(f32::INFINITY)
                     .frame(false),
@@ -508,6 +515,7 @@ impl NoteApp {
                 egui::TextEdit::multiline(&mut note.content)
                     .desired_rows(rows)
                     .desired_width(f32::INFINITY)
+                    .text_color(TEXT_DARK)
                     .frame(false)
                     .hint_text("写点什么…"),
             );
@@ -633,9 +641,13 @@ impl eframe::App for NoteApp {
             .default_width(286.0)
             .show(ctx, |ui| self.sidebar(ui));
 
-        // ---- 中央编辑区 ----
+        // ---- 中央编辑区（显式白底黑字，避免透出黑色背景） ----
         egui::CentralPanel::default()
-            .frame(egui::Frame::none().inner_margin(egui::Margin::same(14.0)))
+            .frame(
+                egui::Frame::none()
+                    .fill(Color32::from_rgb(255, 255, 255))
+                    .inner_margin(egui::Margin::same(14.0)),
+            )
             .show(ctx, |ui| self.editor(ui));
 
         // ---- 删除确认弹窗 ----
