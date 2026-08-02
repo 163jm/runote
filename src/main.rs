@@ -176,6 +176,20 @@ fn setup_fonts(ctx: &egui::Context) {
     ctx.set_fonts(fonts);
 }
 
+fn setup_text_styles(ctx: &egui::Context) {
+    use egui::{FontFamily, TextStyle};
+    let mut style = (*ctx.style()).clone();
+    style.text_styles = [
+        (TextStyle::Heading, FontId::new(21.0, FontFamily::Proportional)),
+        (TextStyle::Body, FontId::new(15.5, FontFamily::Proportional)),
+        (TextStyle::Monospace, FontId::new(15.0, FontFamily::Monospace)),
+        (TextStyle::Button, FontId::new(15.0, FontFamily::Proportional)),
+        (TextStyle::Small, FontId::new(12.0, FontFamily::Proportional)),
+    ]
+    .into();
+    ctx.set_style(style);
+}
+
 fn setup_visuals(ctx: &egui::Context) {
     // 强制浅色主题，不跟随操作系统的深色/浅色模式设置，
     // 避免在系统开启深色模式时被自动切回黑色背景。
@@ -220,6 +234,7 @@ struct NoteApp {
 impl NoteApp {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
         setup_fonts(&cc.egui_ctx);
+        setup_text_styles(&cc.egui_ctx);
         setup_visuals(&cc.egui_ctx);
         let save_path = data_path();
         let notes = load_notes(&save_path);
@@ -304,9 +319,9 @@ impl NoteApp {
             ui.painter().circle_filled(r.center(), 8.0, ACCENT);
             ui.painter().circle_filled(r.center() - Vec2::new(1.5, 1.5), 4.5, Color32::WHITE);
             ui.add_space(3.0);
-            ui.label(RichText::new("RuNote").size(19.0).strong().color(TEXT_DARK));
+            ui.label(RichText::new("RuNote").size(20.5).strong().color(TEXT_DARK));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(RichText::new(format!("{} 张", self.notes.notes.len())).size(11.0).color(TEXT_FAINT));
+                ui.label(RichText::new(format!("{} 张", self.notes.notes.len())).size(12.0).color(TEXT_FAINT));
             });
         });
         ui.add_space(12.0);
@@ -359,7 +374,7 @@ impl NoteApp {
                 ui.vertical_centered(|ui| {
                     ui.label(
                         RichText::new(if q.is_empty() { "还没有便签" } else { "没有匹配的便签" })
-                            .size(13.0)
+                            .size(14.0)
                             .color(TEXT_SOFT),
                     );
                 });
@@ -424,7 +439,7 @@ impl NoteApp {
                 let w = rect.width() - 30.0;
                 let title_galley = painter.layout(
                     truncate(&title, 20),
-                    FontId::proportional(13.5),
+                    FontId::proportional(14.5),
                     TEXT_DARK,
                     w,
                 );
@@ -433,14 +448,14 @@ impl NoteApp {
                 if !preview.is_empty() {
                     let g = painter.layout(
                         truncate(&preview, 34),
-                        FontId::proportional(11.5),
+                        FontId::proportional(12.5),
                         TEXT_SOFT,
                         w,
                     );
                     painter.galley(Pos2::new(x, rect.top() + 30.0), g, TEXT_SOFT);
                 }
 
-                let tg = painter.layout(fmt_time(updated), FontId::proportional(10.0), TEXT_FAINT, 80.0);
+                let tg = painter.layout(fmt_time(updated), FontId::proportional(11.0), TEXT_FAINT, 80.0);
                 painter.galley(
                     Pos2::new(rect.right() - tg.size().x - 10.0, rect.bottom() - tg.size().y - 6.0),
                     tg,
@@ -490,11 +505,11 @@ impl NoteApp {
 
             // 时间行 + 删除
             ui.horizontal(|ui| {
-                ui.label(RichText::new(format!("创建于 {}", fmt_time(note.created))).size(11.0).color(TEXT_FAINT));
-                ui.label(RichText::new("·").size(11.0).color(TEXT_FAINT));
-                ui.label(RichText::new(fmt_ago(note.updated)).size(11.0).color(TEXT_FAINT));
+                ui.label(RichText::new(format!("创建于 {}", fmt_time(note.created))).size(12.0).color(TEXT_FAINT));
+                ui.label(RichText::new("·").size(12.0).color(TEXT_FAINT));
+                ui.label(RichText::new(fmt_ago(note.updated)).size(12.0).color(TEXT_FAINT));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let del_btn = egui::Button::new(RichText::new("删除").size(11.5).color(ERROR_RED))
+                    let del_btn = egui::Button::new(RichText::new("删除").size(12.5).color(ERROR_RED))
                         .fill(Color32::from_rgb(255, 240, 240))
                         .stroke(Stroke::NONE)
                         .rounding(6.0);
@@ -511,15 +526,17 @@ impl NoteApp {
             let row_h = ui.text_style_height(&egui::TextStyle::Body);
             let avail_h = ui.available_height() - 10.0;
             let rows = (avail_h / row_h).floor().max(8.0) as usize;
+            let content_id = egui::Id::new(("note_content_editor", id));
             let c_resp = ui.add(
                 egui::TextEdit::multiline(&mut note.content)
+                    .id(content_id)
                     .desired_rows(rows)
                     .desired_width(f32::INFINITY)
                     .text_color(TEXT_DARK)
                     .frame(false)
                     .hint_text("写点什么…"),
             );
-            let content_changed = c_resp.changed();
+            let content_changed = editor_context_menu(ui, &c_resp, content_id, &mut note.content) || c_resp.changed();
             let chars = note.content.chars().count();
             (title_changed, content_changed, del_clicked, note.created, note.updated, chars)
         };
@@ -534,10 +551,10 @@ impl NoteApp {
         // 底部：字数
         ui.add_space(2.0);
         ui.horizontal(|ui| {
-            ui.label(RichText::new(format!("{chars} 字")).size(10.5).color(TEXT_FAINT));
+            ui.label(RichText::new(format!("{chars} 字")).size(11.5).color(TEXT_FAINT));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.label(RichText::new(format!("最近编辑 {updated_ago}", updated_ago = fmt_ago(updated)))
-                    .size(10.5)
+                    .size(11.5)
                     .color(TEXT_FAINT));
             });
         });
@@ -574,12 +591,119 @@ impl NoteApp {
                 }
 
                 ui.add_space(12.0);
-                ui.label(RichText::new("选择或新建一张便签").size(15.0).color(TEXT_SOFT));
+                ui.label(RichText::new("选择或新建一张便签").size(16.0).color(TEXT_SOFT));
                 ui.add_space(4.0);
-                ui.label(RichText::new("Ctrl+N 新建　·　Ctrl+S 保存").size(11.0).color(TEXT_FAINT));
+                ui.label(RichText::new("Ctrl+N 新建　·　Ctrl+S 保存").size(12.0).color(TEXT_FAINT));
             });
         });
     }
+}
+
+/// 为多行文本编辑器提供右键菜单：复制 / 剪切 / 粘贴 / 全选
+/// 返回 true 表示文本内容被本函数修改（剪切/粘贴），调用方需要据此标记为已改动。
+fn editor_context_menu(
+    ui: &mut egui::Ui,
+    resp: &egui::Response,
+    editor_id: egui::Id,
+    text: &mut String,
+) -> bool {
+    use egui::text::{CCursor, CCursorRange};
+    use egui::widgets::text_edit::TextEditState;
+
+    let mut changed = false;
+    resp.context_menu(|ui| {
+        ui.set_min_width(112.0);
+
+        // 当前选区范围（字符索引），用于复制/剪切时提取被选中的文本
+        let selected_range = TextEditState::load(ui.ctx(), editor_id).and_then(|state| state.cursor.char_range());
+
+        let selected_text: Option<String> = selected_range.and_then(|range| {
+            let (min, max) = (
+                range.primary.index.min(range.secondary.index),
+                range.primary.index.max(range.secondary.index),
+            );
+            if min == max {
+                None
+            } else {
+                Some(text.chars().skip(min).take(max - min).collect())
+            }
+        });
+        let has_selection = selected_text.as_ref().map_or(false, |s| !s.is_empty());
+
+        if ui.add_enabled(has_selection, egui::Button::new("复制")).clicked() {
+            if let Some(s) = selected_text.clone() {
+                ui.output_mut(|o| o.copied_text = s);
+            }
+            ui.close_menu();
+        }
+
+        if ui.add_enabled(has_selection, egui::Button::new("剪切")).clicked() {
+            if let (Some(s), Some(range)) = (selected_text.clone(), selected_range) {
+                ui.output_mut(|o| o.copied_text = s);
+                let (min, max) = (
+                    range.primary.index.min(range.secondary.index),
+                    range.primary.index.max(range.secondary.index),
+                );
+                let before: String = text.chars().take(min).collect();
+                let after: String = text.chars().skip(max).collect();
+                *text = before + &after;
+                changed = true;
+                // 光标落到剪切位置
+                if let Some(mut state) = TextEditState::load(ui.ctx(), editor_id) {
+                    state.cursor.set_char_range(Some(CCursorRange::one(CCursor::new(min))));
+                    state.store(ui.ctx(), editor_id);
+                }
+            }
+            ui.close_menu();
+        }
+
+        if ui.button("粘贴").clicked() {
+            if let Ok(mut clipboard) = arboard::Clipboard::new() {
+                if let Ok(clip_text) = clipboard.get_text() {
+                    if !clip_text.is_empty() {
+                        if let Some(mut state) = TextEditState::load(ui.ctx(), editor_id) {
+                            let range = state.cursor.char_range().unwrap_or_else(|| {
+                                CCursorRange::one(CCursor::new(text.chars().count()))
+                            });
+                            let (min, max) = (
+                                range.primary.index.min(range.secondary.index),
+                                range.primary.index.max(range.secondary.index),
+                            );
+                            let before: String = text.chars().take(min).collect();
+                            let after: String = text.chars().skip(max).collect();
+                            let insert_chars = clip_text.chars().count();
+                            *text = before + &clip_text + &after;
+                            changed = true;
+                            let new_pos = CCursor::new(min + insert_chars);
+                            state.cursor.set_char_range(Some(CCursorRange::one(new_pos)));
+                            state.store(ui.ctx(), editor_id);
+                        }
+                    }
+                }
+            }
+            ui.close_menu();
+        }
+
+        ui.separator();
+
+        if ui.button("全选").clicked() {
+            if let Some(mut state) = TextEditState::load(ui.ctx(), editor_id) {
+                let start = CCursor::new(0);
+                let end = CCursor::new(text.chars().count());
+                state.cursor.set_char_range(Some(CCursorRange::two(start, end)));
+                state.store(ui.ctx(), editor_id);
+            } else {
+                // 编辑器尚未获得过焦点，没有已存储的状态时，先创建一条全选范围
+                let start = CCursor::new(0);
+                let end = CCursor::new(text.chars().count());
+                let mut state = TextEditState::default();
+                state.cursor.set_char_range(Some(CCursorRange::two(start, end)));
+                state.store(ui.ctx(), editor_id);
+            }
+            ui.close_menu();
+        }
+    });
+    changed
 }
 
 /// 取内容第一行作为列表摘要
@@ -626,10 +750,10 @@ impl eframe::App for NoteApp {
                 } else {
                     (ERROR_RED, self.status.clone())
                 };
-                ui.label(RichText::new("●").size(11.0).color(dot));
-                ui.label(RichText::new(txt).size(11.0).color(TEXT_SOFT));
+                ui.label(RichText::new("●").size(12.0).color(dot));
+                ui.label(RichText::new(txt).size(12.0).color(TEXT_SOFT));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(RichText::new("RuNote v0.2 · 数据在 %APPDATA%\\RuNote").size(10.0).color(TEXT_FAINT));
+                    ui.label(RichText::new("RuNote v0.2 · 数据在 %APPDATA%\\RuNote").size(11.0).color(TEXT_FAINT));
                 });
             });
             ui.add_space(3.0);
@@ -704,8 +828,8 @@ fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("RuNote 便签")
-            .with_inner_size([920.0, 640.0])
-            .with_min_inner_size([520.0, 400.0]),
+            .with_inner_size([1180.0, 800.0])
+            .with_min_inner_size([560.0, 420.0]),
         ..Default::default()
     };
     eframe::run_native(
