@@ -527,16 +527,6 @@ impl NoteApp {
             let avail_h = ui.available_height() - 10.0;
             let rows = (avail_h / row_h).floor().max(8.0) as usize;
             let content_id = egui::Id::new(("note_content_editor", id));
-            // 在渲染 TextEdit 之前，先探测这一帧是否发生了右键点击（不消费事件）。
-            // egui 的 TextEdit 在收到右键点击时会把它当作普通点击处理，从而清空原有的文字选区，
-            // 所以必须在渲染之前把当前选区保存下来，供右键菜单使用。
-            let will_secondary_click = ui.ctx().input(|i| i.pointer.secondary_clicked());
-            let pre_click_selection = if will_secondary_click {
-                egui::widgets::text_edit::TextEditState::load(ui.ctx(), content_id)
-                    .and_then(|s| s.cursor.char_range())
-            } else {
-                None
-            };
 
             let c_resp = ui.add(
                 egui::TextEdit::multiline(&mut note.content)
@@ -548,29 +538,20 @@ impl NoteApp {
                     .hint_text("写点什么…"),
             );
 
-            // 如果右键点击落在编辑框内且选区被清空了，用点击前保存的选区快照恢复它，
-            // 这样右键菜单看到的就是用户点击前实际选中的文字。
-            if will_secondary_click && c_resp.secondary_clicked() {
-                if let Some(saved_range) = pre_click_selection {
-                    let saved_has_selection = saved_range.primary.index != saved_range.secondary.index;
-                    if saved_has_selection {
-                        if let Some(mut state) =
-                            egui::widgets::text_edit::TextEditState::load(ui.ctx(), content_id)
-                        {
-                            let cleared = state
-                                .cursor
-                                .char_range()
-                                .map_or(true, |r| r.primary.index == r.secondary.index);
-                            if cleared {
-                                state.cursor.set_char_range(Some(saved_range));
-                                state.store(ui.ctx(), content_id);
-                            }
-                        }
+            // 持续记录"最近一次非空选区"，存在独立的 memory 键里（不是 TextEdit 自身的状态）。
+            // egui 的 TextEdit 收到右键点击时会把它当成普通点击处理并清空选区，
+            // 所以不能依赖 TextEdit 自身状态在右键那一帧的值，而是用这份独立记录的、
+            // 点击发生前最后一次真实存在的选区来判断。
+            let last_sel_key = egui::Id::new(("note_content_last_selection", id));
+            if let Some(state) = egui::widgets::text_edit::TextEditState::load(ui.ctx(), content_id) {
+                if let Some(range) = state.cursor.char_range() {
+                    if range.primary.index != range.secondary.index {
+                        ui.ctx().data_mut(|d| d.insert_temp(last_sel_key, range));
                     }
                 }
             }
 
-            let content_changed = editor_context_menu(ui, &c_resp, content_id, &mut note.content) || c_resp.changed();
+            let content_changed = editor_context_menu(ui, &c_resp, content_id, last_sel_key, &mut note.content) || c_resp.changed();
             let chars = note.content.chars().count();
             (title_changed, content_changed, del_clicked, note.created, note.updated, chars)
         };
@@ -634,11 +615,16 @@ impl NoteApp {
 }
 
 /// 为多行文本编辑器提供右键菜单：复制 / 剪切 / 粘贴 / 全选
+/// `last_sel_key` 是外部持续维护的"最近一次非空选区"memory 键——
+/// 因为 egui 的 TextEdit 收到右键点击时会把它当成普通点击处理并清空选区，
+/// 所以复制/剪切是否可用、要复制剪切的内容范围，都以这份记录为准，
+/// 而不是读右键点击那一帧 TextEdit 自身的（已被清空的）状态。
 /// 返回 true 表示文本内容被本函数修改（剪切/粘贴），调用方需要据此标记为已改动。
 fn editor_context_menu(
     ui: &mut egui::Ui,
     resp: &egui::Response,
     editor_id: egui::Id,
+    last_sel_key: egui::Id,
     text: &mut String,
 ) -> bool {
     use egui::text::{CCursor, CCursorRange};
@@ -648,8 +634,8 @@ fn editor_context_menu(
     resp.context_menu(|ui| {
         ui.set_min_width(112.0);
 
-        // 当前选区范围（字符索引），用于复制/剪切时提取被选中的文本
-        let selected_range = TextEditState::load(ui.ctx(), editor_id).and_then(|state| state.cursor.char_range());
+        // 点击前最后一次真实存在的选区（字符索引），用于复制/剪切时提取被选中的文本
+        let selected_range: Option<CCursorRange> = ui.ctx().data(|d| d.get_temp(last_sel_key));
 
         let selected_text: Option<String> = selected_range.and_then(|range| {
             let (min, max) = (
@@ -682,11 +668,11 @@ fn editor_context_menu(
                 let after: String = text.chars().skip(max).collect();
                 *text = before + &after;
                 changed = true;
-                // 光标落到剪切位置
-                if let Some(mut state) = TextEditState::load(ui.ctx(), editor_id) {
-                    state.cursor.set_char_range(Some(CCursorRange::one(CCursor::new(min))));
-                    state.store(ui.ctx(), editor_id);
-                }
+                // 光标落到剪切位置，并清掉记录的选区，避免再次误用
+                let mut state = TextEditState::load(ui.ctx(), editor_id).unwrap_or_default();
+                state.cursor.set_char_range(Some(CCursorRange::one(CCursor::new(min))));
+                state.store(ui.ctx(), editor_id);
+                ui.ctx().data_mut(|d| d.remove::<CCursorRange>(last_sel_key));
             }
             ui.close_menu();
         }
@@ -695,23 +681,24 @@ fn editor_context_menu(
             if let Ok(mut clipboard) = arboard::Clipboard::new() {
                 if let Ok(clip_text) = clipboard.get_text() {
                     if !clip_text.is_empty() {
-                        if let Some(mut state) = TextEditState::load(ui.ctx(), editor_id) {
-                            let range = state.cursor.char_range().unwrap_or_else(|| {
-                                CCursorRange::one(CCursor::new(text.chars().count()))
-                            });
-                            let (min, max) = (
-                                range.primary.index.min(range.secondary.index),
-                                range.primary.index.max(range.secondary.index),
-                            );
-                            let before: String = text.chars().take(min).collect();
-                            let after: String = text.chars().skip(max).collect();
-                            let insert_chars = clip_text.chars().count();
-                            *text = before + &clip_text + &after;
-                            changed = true;
-                            let new_pos = CCursor::new(min + insert_chars);
-                            state.cursor.set_char_range(Some(CCursorRange::one(new_pos)));
-                            state.store(ui.ctx(), editor_id);
-                        }
+                        // 粘贴优先用记录的选区（如果有），否则退回当前光标位置
+                        let range = selected_range
+                            .or_else(|| TextEditState::load(ui.ctx(), editor_id).and_then(|s| s.cursor.char_range()))
+                            .unwrap_or_else(|| CCursorRange::one(CCursor::new(text.chars().count())));
+                        let (min, max) = (
+                            range.primary.index.min(range.secondary.index),
+                            range.primary.index.max(range.secondary.index),
+                        );
+                        let before: String = text.chars().take(min).collect();
+                        let after: String = text.chars().skip(max).collect();
+                        let insert_chars = clip_text.chars().count();
+                        *text = before + &clip_text + &after;
+                        changed = true;
+                        let new_pos = CCursor::new(min + insert_chars);
+                        let mut state = TextEditState::load(ui.ctx(), editor_id).unwrap_or_default();
+                        state.cursor.set_char_range(Some(CCursorRange::one(new_pos)));
+                        state.store(ui.ctx(), editor_id);
+                        ui.ctx().data_mut(|d| d.remove::<CCursorRange>(last_sel_key));
                     }
                 }
             }
@@ -721,19 +708,12 @@ fn editor_context_menu(
         ui.separator();
 
         if ui.button("全选").clicked() {
-            if let Some(mut state) = TextEditState::load(ui.ctx(), editor_id) {
-                let start = CCursor::new(0);
-                let end = CCursor::new(text.chars().count());
-                state.cursor.set_char_range(Some(CCursorRange::two(start, end)));
-                state.store(ui.ctx(), editor_id);
-            } else {
-                // 编辑器尚未获得过焦点，没有已存储的状态时，先创建一条全选范围
-                let start = CCursor::new(0);
-                let end = CCursor::new(text.chars().count());
-                let mut state = TextEditState::default();
-                state.cursor.set_char_range(Some(CCursorRange::two(start, end)));
-                state.store(ui.ctx(), editor_id);
-            }
+            let start = CCursor::new(0);
+            let end = CCursor::new(text.chars().count());
+            let mut state = TextEditState::load(ui.ctx(), editor_id).unwrap_or_default();
+            state.cursor.set_char_range(Some(CCursorRange::two(start, end)));
+            state.store(ui.ctx(), editor_id);
+            ui.ctx().data_mut(|d| d.insert_temp(last_sel_key, CCursorRange::two(start, end)));
             ui.close_menu();
         }
     });
