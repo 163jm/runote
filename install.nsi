@@ -2,7 +2,7 @@
 !include "MUI2.nsh"
 
 Name "Memo"
-OutFile "RuNote-Setup.exe"
+OutFile "Memo-Setup.exe"
 InstallDir "$LOCALAPPDATA\Memo"
 InstallDirRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Memo" "InstallLocation"
 RequestExecutionLevel user
