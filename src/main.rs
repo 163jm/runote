@@ -87,6 +87,9 @@ impl Note {
 struct Notes {
     notes: Vec<Note>,
     next_id: u64,
+    /// 上一次关闭程序时正在查看的便签 id，用于下次启动时恢复
+    #[serde(default)]
+    last_open: Option<u64>,
 }
 
 // ---------------- 时间工具（UTC+8 显示） ----------------
@@ -242,6 +245,11 @@ impl NoteApp {
         let save_path = data_path();
         let notes = load_notes(&save_path);
 
+        // 恢复上次关闭程序时正在查看的便签（若该便签仍存在）
+        let current = notes
+            .last_open
+            .filter(|id| notes.notes.iter().any(|n| n.id == *id));
+
         // 侧栏 Logo 图标：直接用应用图标（与任务栏图标保持一致）
         let logo_texture = image::load_from_memory(APP_ICON).ok().map(|img| {
             let img = img.into_rgba8();
@@ -252,7 +260,7 @@ impl NoteApp {
 
         Self {
             notes,
-            current: None,
+            current,
             dirty: false,
             dirty_since: None,
             last_save: Instant::now(),
@@ -281,6 +289,9 @@ impl NoteApp {
     }
 
     fn save(&mut self) {
+        // 保存前把"当前正在查看的便签"同步进数据里，下次启动才能恢复
+        self.notes.last_open = self.current;
+
         if let Some(parent) = self.save_path.parent() {
             let _ = fs::create_dir_all(parent);
         }
