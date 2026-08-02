@@ -1,4 +1,4 @@
-name: Build RuNote
+name: Build 
 
 on:
   workflow_dispatch:
@@ -30,7 +30,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          cp target/x86_64-pc-windows-msvc/release/RuNote.exe dist/RuNote.exe
+          cp target/x86_64-pc-windows-msvc/release/Memo.exe dist/Memo.exe
 
       - name: 安装 NSIS
         run: choco install nsis -y
@@ -38,7 +38,7 @@ jobs:
       - name: 使用 NSIS 打包安装程序
         shell: cmd
         run: |
-          copy dist\RuNote.exe RuNote.exe
+          copy dist\Memo.exe Memo.exe
           "C:\Program Files (x86)\NSIS\makensis.exe" install.nsi
 
 
@@ -47,4 +47,4 @@ jobs:
         with:
           tag_name: test
           name: test
-          files: RuNote-Setup.exe
+          files: Memo-Setup.exe
