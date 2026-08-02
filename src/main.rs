@@ -1,13 +1,4 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-
-//! RuNote —— 现代、简单、轻量的 Windows 便签
-//! 特性：
-//!   - 卡片式便签列表 + 搜索过滤，悬停/选中带平滑动效
-//!   - 自动保存（输入停顿 700ms 防抖 + 每 5 秒兜底 + 退出强制保存）
-//!   - 内嵌开源中文字体（Noto Sans SC 子集，GB2312 全量），中文输入显示零依赖
-//!   - 数据持久化到 %APPDATA%\RuNote\notes.json（原子写入）
-//!   - 单个 exe 静态链接，运行时零外部依赖
-
 use std::fs;
 use std::path::PathBuf;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -148,7 +139,7 @@ fn fmt_ago(secs: u64) -> String {
 
 fn data_path() -> PathBuf {
     if let Ok(appdata) = std::env::var("APPDATA") {
-        PathBuf::from(appdata).join("RuNote").join("notes.json")
+        PathBuf::from(appdata).join("Memo").join("notes.json")
     } else {
         PathBuf::from("notes.json")
     }
@@ -351,7 +342,7 @@ impl NoteApp {
                 ui.painter().circle_filled(r.center() - Vec2::new(1.5, 1.5), 4.5, Color32::WHITE);
             }
             ui.add_space(3.0);
-            ui.label(RichText::new("RuNote").size(20.5).strong().color(TEXT_DARK));
+            ui.label(RichText::new("Memo").size(20.5).strong().color(TEXT_DARK));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.label(RichText::new(format!("{} 张", self.notes.notes.len())).size(12.0).color(TEXT_FAINT));
             });
@@ -359,7 +350,7 @@ impl NoteApp {
         ui.add_space(12.0);
 
         // 新建按钮
-        let new_btn = egui::Button::new(RichText::new("＋ 新建便签").color(Color32::WHITE).strong())
+        let new_btn = egui::Button::new(RichText::new("新建").color(Color32::WHITE).strong())
             .fill(ACCENT)
             .stroke(Stroke::NONE)
             .rounding(8.0)
@@ -376,7 +367,7 @@ impl NoteApp {
         // 搜索框
         ui.add(
             egui::TextEdit::singleline(&mut self.search)
-                .hint_text("搜索便签…")
+                .hint_text("搜索…")
                 .desired_width(f32::INFINITY)
                 .margin(egui::Margin::same(8.0)),
         );
@@ -666,12 +657,6 @@ impl NoteApp {
     }
 }
 
-/// 为多行文本编辑器提供右键菜单：复制 / 剪切 / 粘贴 / 全选
-/// `last_sel_key` 是外部持续维护的"最近一次非空选区"memory 键——
-/// 因为 egui 的 TextEdit 收到右键点击时会把它当成普通点击处理并清空选区，
-/// 所以复制/剪切是否可用、要复制剪切的内容范围，都以这份记录为准，
-/// 而不是读右键点击那一帧 TextEdit 自身的（已被清空的）状态。
-/// 返回 true 表示文本内容被本函数修改（剪切/粘贴），调用方需要据此标记为已改动。
 fn editor_context_menu(
     ui: &mut egui::Ui,
     resp: &egui::Response,
@@ -891,7 +876,7 @@ fn load_app_icon() -> Option<egui::IconData> {
 
 fn main() -> eframe::Result<()> {
     let mut viewport = egui::ViewportBuilder::default()
-        .with_title("RuNote 便签")
+        .with_title("Memo")
         .with_inner_size([1180.0, 660.0])
         .with_min_inner_size([620.0, 420.0]);
     if let Some(icon) = load_app_icon() {
@@ -904,7 +889,7 @@ fn main() -> eframe::Result<()> {
         ..Default::default()
     };
     eframe::run_native(
-        "RuNote",
+        "Memo",
         options,
         Box::new(|cc| Ok(Box::new(NoteApp::new(cc)))),
     )
