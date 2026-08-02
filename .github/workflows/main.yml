@@ -34,7 +34,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: 编译 Release 版本
-        run: cargo build --release --locked --target x86_64-pc-windows-msvc
+        run: cargo build --release --target x86_64-pc-windows-msvc
 
       - name: 整理产物
         shell: bash
