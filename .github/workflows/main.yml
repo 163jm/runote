@@ -1,0 +1,92 @@
+name: Build RuNote
+
+# 触发条件：
+# 1. push 到 main 分支
+# 2. 提交 Pull Request 到 main 分支
+# 3. push 一个 v 开头的 tag（例如 v1.0.0）时，会自动创建 GitHub Release 并附带产物
+# 4. 也支持在 Actions 页面手动触发
+on:
+  push:
+    branches: [ "main" ]
+    tags: [ "v*" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build (windows-x86_64)
+    runs-on: windows-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Rust 工具链
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: 缓存 Cargo 依赖
+        uses: Swatinem/rust-cache@v2
+
+      - name: 编译 Release 版本
+        run: cargo build --release --locked --target x86_64-pc-windows-msvc
+
+      - name: 整理产物
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp target/x86_64-pc-windows-msvc/release/RuNote.exe dist/RuNote.exe
+
+      - name: 上传 exe 构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: RuNote-exe
+          path: dist/RuNote.exe
+
+      - name: 安装 NSIS
+        run: choco install nsis -y
+
+      - name: 使用 NSIS 打包安装程序
+        shell: cmd
+        run: |
+          copy dist\RuNote.exe RuNote.exe
+          "C:\Program Files (x86)\NSIS\makensis.exe" install.nsi
+
+      - name: 上传安装程序构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: RuNote-Setup
+          path: RuNote-Setup.exe
+
+  release:
+    name: 发布 Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - name: 下载 exe 产物
+        uses: actions/download-artifact@v4
+        with:
+          name: RuNote-exe
+          path: dist
+
+      - name: 下载安装程序产物
+        uses: actions/download-artifact@v4
+        with:
+          name: RuNote-Setup
+          path: dist
+
+      - name: 创建 GitHub Release 并上传文件
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/RuNote.exe
+            dist/RuNote-Setup.exe
+          generate_release_notes: true
