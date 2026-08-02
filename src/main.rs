@@ -808,10 +808,13 @@ impl eframe::App for NoteApp {
 
         // 底部状态栏已按需求隐藏（保存状态仍在内部记录，仅不再显示）
 
-        // ---- 左侧列表（固定宽度，不可拖动） ----
+        // ---- 左侧列表（宽度随窗口比例自适应，不可手动拖动） ----
+        let win_w = ctx.screen_rect().width();
+        // 侧栏宽度取窗口宽度的 24%，并限制在合理范围内，避免窗口过窄/过宽时比例失调
+        let sidebar_w = (win_w * 0.24).clamp(240.0, 340.0);
         egui::SidePanel::left("sidebar")
             .resizable(false)
-            .default_width(286.0)
+            .exact_width(sidebar_w)
             .show(ctx, |ui| self.sidebar(ui));
 
         // ---- 中央编辑区（显式白底黑字，避免透出黑色背景） ----
@@ -890,7 +893,7 @@ fn main() -> eframe::Result<()> {
     let mut viewport = egui::ViewportBuilder::default()
         .with_title("RuNote 便签")
         .with_inner_size([1180.0, 660.0])
-        .with_min_inner_size([560.0, 400.0]);
+        .with_min_inner_size([620.0, 420.0]);
     if let Some(icon) = load_app_icon() {
         viewport = viewport.with_icon(icon);
     }
