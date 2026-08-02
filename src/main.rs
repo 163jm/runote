@@ -527,6 +527,17 @@ impl NoteApp {
             let avail_h = ui.available_height() - 10.0;
             let rows = (avail_h / row_h).floor().max(8.0) as usize;
             let content_id = egui::Id::new(("note_content_editor", id));
+            // 在渲染 TextEdit 之前，先探测这一帧是否发生了右键点击（不消费事件）。
+            // egui 的 TextEdit 在收到右键点击时会把它当作普通点击处理，从而清空原有的文字选区，
+            // 所以必须在渲染之前把当前选区保存下来，供右键菜单使用。
+            let will_secondary_click = ui.ctx().input(|i| i.pointer.secondary_clicked());
+            let pre_click_selection = if will_secondary_click {
+                egui::widgets::text_edit::TextEditState::load(ui.ctx(), content_id)
+                    .and_then(|s| s.cursor.char_range())
+            } else {
+                None
+            };
+
             let c_resp = ui.add(
                 egui::TextEdit::multiline(&mut note.content)
                     .id(content_id)
@@ -536,6 +547,29 @@ impl NoteApp {
                     .frame(false)
                     .hint_text("写点什么…"),
             );
+
+            // 如果右键点击落在编辑框内且选区被清空了，用点击前保存的选区快照恢复它，
+            // 这样右键菜单看到的就是用户点击前实际选中的文字。
+            if will_secondary_click && c_resp.secondary_clicked() {
+                if let Some(saved_range) = pre_click_selection {
+                    let saved_has_selection = saved_range.primary.index != saved_range.secondary.index;
+                    if saved_has_selection {
+                        if let Some(mut state) =
+                            egui::widgets::text_edit::TextEditState::load(ui.ctx(), content_id)
+                        {
+                            let cleared = state
+                                .cursor
+                                .char_range()
+                                .map_or(true, |r| r.primary.index == r.secondary.index);
+                            if cleared {
+                                state.cursor.set_char_range(Some(saved_range));
+                                state.store(ui.ctx(), content_id);
+                            }
+                        }
+                    }
+                }
+            }
+
             let content_changed = editor_context_menu(ui, &c_resp, content_id, &mut note.content) || c_resp.changed();
             let chars = note.content.chars().count();
             (title_changed, content_changed, del_clicked, note.created, note.updated, chars)
